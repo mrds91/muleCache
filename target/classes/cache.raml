@@ -1,0 +1,25 @@
+title: Customer-Order
+version: v1
+/customer:
+  get:
+    queryParameters:
+      resource:
+        example : "customers"
+      clause:
+        example : "CountryStartsWith"
+      clauseValue:
+        example : "u"
+    responses:
+      200:
+        body:
+          application/json:
+/order:
+  get:
+    queryParameters:
+      resource:
+      clause:
+      clauseValue:
+    responses:
+      200:
+        body:
+          application/json:

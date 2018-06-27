@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/apikit" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:spring="http://www.springframework.org/schema/beans" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/apikit http://www.mulesoft.org/schema/mule/apikit/current/mule-apikit.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+    <apikit:config name="Router" raml="cache.raml" consoleEnabled="true" consolePath="console"  doc:name="Router">
+        <apikit:flow-mapping resource="/customer" action="get" flow-ref="customerFlow"/>
+        <apikit:flow-mapping resource="/order" action="get" flow-ref="orderFlow"/>
+    </apikit:config>
+    <http:listener-config name="HTTP_Listener_Configuration" host="0.0.0.0" port="8080"  doc:name="HTTP Listener Configuration"/>
+    
+     <http:request-config name="nortwindConnector" host="northwind.servicestack.net" port="80"   doc:name="HTTP Request Configuration" basePath="query/">
+        <http:proxy host="172.16.181.145" port="8080"/>
+    </http:request-config>
+    
+    <http:request-config name="nortwindConnector1" host="northwind.servicestack.net" port="80" basePath="/query" doc:name="HTTP Request Configuration">
+        <http:proxy host="proxy.tcs.com" port="80"/>
+       
+    </http:request-config>
+    <ee:object-store-caching-strategy name="Caching_Strategy" doc:name="Caching Strategy" keyGenerationExpression="#[flowVars.resource + flowVars.clause + flowVars.clauseValue]">
+        <in-memory-store name="tcslndStore" maxEntries="1000" entryTTL="10000000" expirationInterval="10000000"/>
+    </ee:object-store-caching-strategy>
+    <flow name="mainFlow">
+        <http:listener config-ref="HTTP_Listener_Configuration" path="tcs/lnd/*" doc:name="ServiceListener"/>
+        <apikit:router config-ref="Router" doc:name="APIkit Router"/>
+    </flow>
+    
+    <flow name="orderFlow">
+        <set-variable doc:name="Set qp" value="#[message.inboundProperties['http.query.params'].resource]" variableName="resource"/>
+    	<set-variable doc:name="Set qp" value="#[message.inboundProperties['http.query.params'].clause]" variableName="clause"/>
+   		<set-variable doc:name="Set qp" value="#[message.inboundProperties['http.query.params'].clauseValue]" variableName="clauseValue"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	"info" : "To be implemented"
+}]]></dw:set-payload>
+        </dw:transform-message>
+    </flow>
+    
+    <flow name="customerFlow">
+        <set-variable variableName="isFromCache" value="true" doc:name="Variable"/>
+    
+    <set-variable doc:name="Set qp" value="#[message.inboundProperties['http.query.params'].resource]" variableName="resource"/>
+    	<set-variable doc:name="Set qp" value="#[message.inboundProperties['http.query.params'].clause]" variableName="clause"/>
+   		<set-variable doc:name="Set qp" value="#[message.inboundProperties['http.query.params'].clauseValue]" variableName="clauseValue"/>
+        <ee:cache doc:name="customerCache" cachingStrategy-ref="Caching_Strategy">
+        <flow-ref name="communicatorFlow" doc:name="Flow Reference"/>
+            <set-variable variableName="isFromCache" value="false" doc:name="Variable"/>
+            <dw:transform-message doc:name="Transform Message">
+                <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+{
+	Countries : payload.Results map ($.Country)
+}]]></dw:set-payload>
+            </dw:transform-message>
+        </ee:cache>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+        <logger message="::::::::::::::::::::::::::::::#[flowVars.isFromCache]::::::::::::::::::::::::::::::" level="ERROR" doc:name="Logger"/>
+        </flow>
+    <sub-flow name="communicatorFlow">
+        <http:request config-ref="nortwindConnector" path="#[flowVars.resource]" method="GET" doc:name="HTTP">
+            <http:request-builder>
+                <http:query-param paramName="#[flowVars.clause]" value="#[flowVars.clauseValue]"/>
+                <http:query-param paramName="format" value="json"/>
+            </http:request-builder>
+        </http:request>
+    </sub-flow>
+</mule>
